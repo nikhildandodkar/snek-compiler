@@ -8,12 +8,12 @@ A compiler for a Lisp/Scheme-like language (S-expressions) that generates x86-64
 
 ### Currently Implemented
 - [x] Arithmetic: `+`, `inc`, `dec`
-- [x] Let bindings (variables)
 - [x] S-expression parser
 - [x] Stack-based code generation to x86-64
 - [x] Basic runtime setup
 
 ### Planned / In Progress
+- [ ] Let bindings (variables)
 - [ ] Conditionals (`if`)
 - [ ] Functions and calling convention
 - [ ] Tuples / Data structures

@@ -9,10 +9,12 @@ import argparse
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 # BACKUS NAUR FORM
-# expr : <number>
+# expr := <number>
+#       | <identifier>
 #       | (<op> <expr>)
+#       | (let (name <expr>) <expr>)
 #       | (+ <expr> <expr>)
-# op: inc
+# op:= inc
 #   | dec
 
 @dataclass 
@@ -36,6 +38,15 @@ class DecNode(ASTNode):
 class IntegerNode(ASTNode):
     val:int
 
+@dataclass 
+class LetNode(ASTNode):
+    name:str
+    name_expr:ASTNode
+    let_expr:ASTNode
+ 
+@dataclass 
+class IdentifierNode(ASTNode):
+    name:str
 
 def Tokenize(sexp):
     spaced = sexp.replace('(',' ( ').replace(')',' ) ')
@@ -54,6 +65,11 @@ class Parser:
     def consume_token(self):
         self._pos+=1
         logging.debug(f"[consume_token] position is {self._pos}")
+    def is_token_identifier(self):
+        pass
+
+    def is_token_keyword(self):
+        pass
 
     def parse(self):
         current_token = self.get_next_token()
@@ -61,6 +77,8 @@ class Parser:
         if current_token.isdecimal():
             self.consume_token()
             return IntegerNode(val=int(current_token))
+        elif self.is_token_identifier():
+            return IdentifierNode(name=current_token)
         elif current_token == '(':
             self.consume_token()
             current_token = self.get_next_token()
@@ -88,7 +106,32 @@ class Parser:
                 else:
                     raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
             elif current_token == 'let':
-                pass
+                self.consume_token()
+                current_token = self.get_next_token()
+                if current_token == '(':
+                    self.consume_tokenK()
+                    current_token = self.get_next_token()
+                    if not self.is_token_keyword():
+                        var_name=cur_token
+                        self.consume_token()
+                        var_expr=self.parse()
+                        current_token =self.get_next_token()
+                        if current_token is ')':
+                            self.consume_token()
+                            let_expr= self.parse()
+                            current_token = self.get_next_token()
+                            if current_token == ')':
+                                self.consume_token()
+                                return LetNode(name=var_name,name_expr=var_expr,let_expr=let_expr)
+                            else:
+                                raise ValueError(f"unexpected charater found {current_token}")
+                        else:
+                            raise ValueError(f"unexpected charater found {current_token}")
+                    else:
+                        raise ValueError(f"not a valid variable name {current_token}")
+                else:
+                    raise ValueError(f"unexpected charater found {current_token}")
+
             else:
                 raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
 
@@ -162,6 +205,13 @@ class CodeGenerator:
         self.generated_code.append(integer_node_code)
         logging.debug(f"mov rax, {node.val}")
 
+    @visit.register(LetNode)
+    def _visit_let(self, node):
+        pass
+
+    @visit.register(IdentifierNode)
+    def _visit_let(self, node):
+        pass
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description="This is itercompiler which compiles s-expression")
