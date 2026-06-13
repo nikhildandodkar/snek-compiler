@@ -55,6 +55,8 @@ class Parser:
     def __init__(self,token_list:list):
         self._token_list= token_list
         self._pos=0
+        self.keywords =['let']
+        self.identifier=[]
 
     def get_next_token(self)->str|None:
         logging.debug(f"[get_next_token] positon is {self._pos}")
@@ -77,7 +79,8 @@ class Parser:
         if current_token.isdecimal():
             self.consume_token()
             return IntegerNode(val=int(current_token))
-        elif self.is_token_identifier():
+        elif current_token in self.identifier:
+            self.consume_token()
             return IdentifierNode(name=current_token)
         elif current_token == '(':
             self.consume_token()
@@ -109,14 +112,15 @@ class Parser:
                 self.consume_token()
                 current_token = self.get_next_token()
                 if current_token == '(':
-                    self.consume_tokenK()
+                    self.consume_token()
                     current_token = self.get_next_token()
-                    if not self.is_token_keyword():
-                        var_name=cur_token
+                    if current_token not in self.keywords:
+                        var_name=current_token
                         self.consume_token()
                         var_expr=self.parse()
                         current_token =self.get_next_token()
-                        if current_token is ')':
+                        self.identifier.append(var_name)
+                        if current_token == ')':
                             self.consume_token()
                             let_expr= self.parse()
                             current_token = self.get_next_token()
@@ -141,6 +145,7 @@ class CodeGenerator:
         self.ast_node = root_node
         self._stack_count=0;
         self.generated_code = []
+        self.variable_map = {}
     def push_variable(self):
         self._stack_count+=1
         return 8*self._stack_count
@@ -207,11 +212,16 @@ class CodeGenerator:
 
     @visit.register(LetNode)
     def _visit_let(self, node):
-        pass
+        self.visit(node.name_expr)
+        self.variable_map[node.name]=self._stack_count+1
+        self.generated_code.append(f"mov [rbp - {self.push_variable()}], rax")
+        self.visit(node.let_expr)
+
 
     @visit.register(IdentifierNode)
     def _visit_let(self, node):
-        pass
+        self.generated_code.append(f"mov rax,[rbp -{8*self.variable_map[node.name]}]")
+
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description="This is itercompiler which compiles s-expression")
