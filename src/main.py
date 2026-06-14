@@ -48,6 +48,12 @@ class LetNode(ASTNode):
 class IdentifierNode(ASTNode):
     name:str
 
+@dataclass 
+class IfNode(ASTNode):
+    cond_expr:ASTNode
+    then_expr:ASTNode
+    else_expr:ASTNode
+
 def Tokenize(sexp):
     spaced = sexp.replace('(',' ( ').replace(')',' ) ')
     return spaced.split()
@@ -67,11 +73,6 @@ class Parser:
     def consume_token(self):
         self._pos+=1
         logging.debug(f"[consume_token] position is {self._pos}")
-    def is_token_identifier(self):
-        pass
-
-    def is_token_keyword(self):
-        pass
 
     def parse(self):
         current_token = self.get_next_token()
@@ -136,6 +137,12 @@ class Parser:
                 else:
                     raise ValueError(f"unexpected charater found {current_token}")
 
+            elif current_token == 'if':
+                self.consume_token()
+                cond_expr = self.parse()
+                then_expr = self.parse()
+                else_expr = self.parse()
+                return IfNode(cond_expr=cond_expr,then_expr=then_expr,else_expr=else_expr)
             else:
                 raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
 
@@ -146,6 +153,15 @@ class CodeGenerator:
         self._stack_count=0;
         self.generated_code = []
         self.variable_map = {}
+        self._label_num=-1
+
+    def add_instruction(self,str):
+        self.generated_code.append("\t"+str)
+    
+    def add_label(self,str):
+        self._label_num+=1
+        self.generated_code.append(f"{str}_{self._label_num}:")
+    
     def push_variable(self):
         self._stack_count+=1
         return 8*self._stack_count
@@ -166,7 +182,7 @@ class CodeGenerator:
             asm_file.write(f"\t push rbp \n")
             asm_file.write(f"\t mov rbp, rsp\n")
             for instructions in self.generated_code:
-                asm_file.write("\t "+instructions +"\n")
+                asm_file.write(instructions +"\n")
             logging.info(f"assembly file is generated")
             asm_file.write(f"\t mov rsp, rbp\n")
             asm_file.write(f"\t pop rbp\n")
@@ -186,42 +202,52 @@ class CodeGenerator:
     @visit.register(AddNode)
     def _visit_binary(self, node):
         self.visit(node.left_expr)
-        self.generated_code.append(f"mov [rbp - {self.push_variable()}], rax")
+        self.add_instruction(f"mov [rbp - {self.push_variable()}], rax")
         logging.debug(f"push rax")
         self.visit(node.right_expr)
-        self.generated_code.append(f"add rax,[rbp - {self.pop_variable()}]")
+        self.add_instruction(f"add rax,[rbp - {self.pop_variable()}]")
         logging.debug(f"add rax,[rbp - ]")
 
     @visit.register(IncNode)
     def _visit_constant(self, node):
         self.visit(node.arg_expr)
-        self.generated_code.append(f"add rax, 1")
+        self.add_instruction(f"add rax, 1")
         logging.debug(f"add rax, 1")
 
     @visit.register(DecNode)
     def _visit_constant(self, node):
         self.visit(node.arg_expr)
-        self.generated_code.append(f"sub rax, 1")
+        self.add_instruction(f"sub rax, 1")
         logging.debug(f"sub rax, 1")
 
     @visit.register(IntegerNode)
     def _visit_constant(self, node):
         integer_node_code=f"mov rax, {node.val}"
-        self.generated_code.append(integer_node_code)
+        self.add_instruction(integer_node_code)
         logging.debug(f"mov rax, {node.val}")
 
     @visit.register(LetNode)
     def _visit_let(self, node):
         self.visit(node.name_expr)
         self.variable_map[node.name]=self._stack_count+1
-        self.generated_code.append(f"mov [rbp - {self.push_variable()}], rax")
+        self.add_instruction(f"mov [rbp - {self.push_variable()}], rax")
         self.visit(node.let_expr)
 
 
     @visit.register(IdentifierNode)
     def _visit_let(self, node):
-        self.generated_code.append(f"mov rax,[rbp -{8*self.variable_map[node.name]}]")
+        self.add_instruction(f"mov rax,[rbp -{8*self.variable_map[node.name]}]")
 
+    @visit.register(IfNode)
+    def _visit_let(self, node):
+        self.visit(node.cond_expr)
+        self.add_instruction(f"cmp rax,0")
+        self.add_instruction(f"je else_of_if_{self._label_num+1}")
+        self.visit(node.then_expr)
+        self.add_instruction(f"jmp end_of_if_{self._label_num+2}")
+        self.add_label(f"else_of_if")
+        self.visit(node.else_expr)
+        self.add_label(f"end_of_if")
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description="This is itercompiler which compiles s-expression")
