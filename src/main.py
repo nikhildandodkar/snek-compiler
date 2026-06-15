@@ -54,6 +54,12 @@ class IfNode(ASTNode):
     then_expr:ASTNode
     else_expr:ASTNode
 
+@dataclass 
+class BinOpNode(ASTNode):
+    operator:str
+    left_expr:ASTNode
+    right_expr:ASTNode
+
 def Tokenize(sexp):
     spaced = sexp.replace('(',' ( ').replace(')',' ) ')
     return spaced.split()
@@ -63,6 +69,7 @@ class Parser:
         self._pos=0
         self.keywords =['let']
         self.identifier=[]
+        self.binary_operator=['<','>','==']
 
     def get_next_token(self)->str|None:
         logging.debug(f"[get_next_token] positon is {self._pos}")
@@ -73,6 +80,9 @@ class Parser:
     def consume_token(self):
         self._pos+=1
         logging.debug(f"[consume_token] position is {self._pos}")
+
+    def is_binary_operator(self,token):
+        return token in self.binary_operator
 
     def parse(self):
         current_token = self.get_next_token()
@@ -143,6 +153,17 @@ class Parser:
                 then_expr = self.parse()
                 else_expr = self.parse()
                 return IfNode(cond_expr=cond_expr,then_expr=then_expr,else_expr=else_expr)
+            elif self.is_binary_operator(current_token):
+                self.consume_token()
+                operator=current_token
+                left_expr=self.parse()
+                right_expr=self.parse()
+                current_token = self.get_next_token()
+                if current_token == ')':
+                    self.consume_token()
+                    return BinOpNode(operator=operator,left_expr=left_expr,right_expr=right_expr)
+                else:
+                    raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
             else:
                 raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
 
@@ -167,9 +188,10 @@ class CodeGenerator:
         return 8*self._stack_count
     
     def pop_variable(self):
-        val = 8*self._stack_count
         self._stack_count-=1
-        return val
+
+    def top_variable(self):
+        return 8*self._stack_count
 
     def generate(self) -> str:
         # Example processing method
@@ -205,8 +227,9 @@ class CodeGenerator:
         self.add_instruction(f"mov [rbp - {self.push_variable()}], rax")
         logging.debug(f"push rax")
         self.visit(node.right_expr)
-        self.add_instruction(f"add rax,[rbp - {self.pop_variable()}]")
-        logging.debug(f"add rax,[rbp - ]")
+        self.add_instruction(f"add rax,[rbp - {self.top_variable()}]")
+        logging.debug(f"add rax,[rbp - {self.top_variable()}]")
+        self.pop_variable()
 
     @visit.register(IncNode)
     def _visit_constant(self, node):
@@ -248,6 +271,21 @@ class CodeGenerator:
         self.add_label(f"else_of_if")
         self.visit(node.else_expr)
         self.add_label(f"end_of_if")
+
+    @visit.register(BinOpNode)
+    def _visit_bin_op(self, node):
+        self.visit(node.left_expr)
+        self.add_instruction(f"mov [rbp - {self.push_variable()}], rax")
+        self.visit(node.right_expr)
+        if node.operator == '<':
+            self.add_instruction(f"sub [rbp -{self.top_variable()}],rax")
+            self.add_instruction(f"mov rax,[rbp -{self.top_variable()}]")
+        elif node.operator == '>':
+            self.add_instruction(f"sub rax,[rbp - {self.top_variable()}]")
+        elif node.operator == '==':
+            self.add_instruction(f"sub rax,[rbp - {self.top_variable()}]")
+        self.pop_variable()
+        self.add_instruction(f"shr rax,63")
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description="This is itercompiler which compiles s-expression")
