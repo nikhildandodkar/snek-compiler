@@ -297,7 +297,7 @@ if __name__ == '__main__':
         source_code=file.read()
     logging.basicConfig(filename='compiler.log', level=logging.INFO)
     if not source_code:
-        source_code= "(+(inc 3) (dec 5))"
+        FileNotFoundError(f"File is empty or not found at {args.file_path}")
     tokens = Tokenize(source_code)
     logging.debug(f'tokens are {tokens}')
     parser = Parser(tokens)
