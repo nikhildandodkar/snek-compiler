@@ -10,10 +10,13 @@ import argparse
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 # BACKUS NAUR FORM
 # expr := <number>
+#       | true
+#       | false
 #       | <identifier>
 #       | (<op> <expr>)
 #       | (let (name <expr>) <expr>)
 #       | (+ <expr> <expr>)
+#       | (if <expr> <expr> <expr>)
 # op:= inc
 #   | dec
 
@@ -60,6 +63,10 @@ class BinOpNode(ASTNode):
     left_expr:ASTNode
     right_expr:ASTNode
 
+@dataclass 
+class BoolNode(ASTNode):
+    flag:bool
+
 def Tokenize(sexp):
     spaced = sexp.replace('(',' ( ').replace(')',' ) ')
     return spaced.split()
@@ -90,6 +97,12 @@ class Parser:
         if current_token.isdecimal():
             self.consume_token()
             return IntegerNode(val=int(current_token))
+        elif current_token == 'true':
+            self.consume_token()
+            return BoolNode(flag=True)
+        elif current_token == 'false':
+            self.consume_token()
+            return BoolNode(flag=False)
         elif current_token in self.identifier:
             self.consume_token()
             return IdentifierNode(name=current_token)
@@ -168,6 +181,8 @@ class Parser:
                 raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
 
 class CodeGenerator:
+    TRUE_VAL  = 0xfffffffffffffffe
+    FALSE_VAL = 0x7ffffffffffffffe
     def __init__(self, root_node: "ASTNode"):
         # Correct PEP 8 attribute naming
         self.ast_node = root_node
@@ -227,6 +242,7 @@ class CodeGenerator:
         self.add_instruction(f"mov [rbp - {self.push_variable()}], rax")
         logging.debug(f"push rax")
         self.visit(node.right_expr)
+        self.add_instruction(f"and rax,{self.TRUE_VAL}")
         self.add_instruction(f"add rax,[rbp - {self.top_variable()}]")
         logging.debug(f"add rax,[rbp - {self.top_variable()}]")
         self.pop_variable()
@@ -234,18 +250,18 @@ class CodeGenerator:
     @visit.register(IncNode)
     def _visit_constant(self, node):
         self.visit(node.arg_expr)
-        self.add_instruction(f"add rax, 1")
+        self.add_instruction(f"add rax, 2")
         logging.debug(f"add rax, 1")
 
     @visit.register(DecNode)
     def _visit_constant(self, node):
         self.visit(node.arg_expr)
-        self.add_instruction(f"sub rax, 1")
+        self.add_instruction(f"sub rax, 2")
         logging.debug(f"sub rax, 1")
 
     @visit.register(IntegerNode)
     def _visit_constant(self, node):
-        integer_node_code=f"mov rax, {node.val}"
+        integer_node_code=f"mov rax, {node.val*2+1}"
         self.add_instruction(integer_node_code)
         logging.debug(f"mov rax, {node.val}")
 
@@ -271,6 +287,13 @@ class CodeGenerator:
         self.add_label(f"else_of_if")
         self.visit(node.else_expr)
         self.add_label(f"end_of_if")
+
+    @visit.register(BoolNode)
+    def _visit_let(self, node):
+        if node.flag: 
+            self.add_instruction(f"mov rax,{self.TRUE_VAL}")
+        else:
+            self.add_instruction(f"mov rax,{self.FALSE_VAL}")
 
     @visit.register(BinOpNode)
     def _visit_bin_op(self, node):
