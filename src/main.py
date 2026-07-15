@@ -1,7 +1,7 @@
 # This is a sample Python script.
 from dataclasses import dataclass
 from functools import singledispatchmethod
-from enum import Enum
+from enum import Enum, auto
 import logging
 import argparse
 
@@ -67,9 +67,20 @@ class BinOpNode(ASTNode):
 class BoolNode(ASTNode):
     flag:bool
 
+@dataclass 
+class SetNode(ASTNode):
+    name: str
+    val_expr: ASTNode
+
+@dataclass 
+class WhileNode(ASTNode):
+    cond_expr: ASTNode
+    body_expr: ASTNode
+
 def Tokenize(sexp):
     spaced = sexp.replace('(',' ( ').replace(')',' ) ')
     return spaced.split()
+
 class Parser:
     def __init__(self,token_list:list):
         self._token_list= token_list
@@ -177,8 +188,37 @@ class Parser:
                     return BinOpNode(operator=operator,left_expr=left_expr,right_expr=right_expr)
                 else:
                     raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+            elif current_token == 'set':
+                self.consume_token()
+                var_name = self.get_next_token()
+                # Ensure it's a known identifier and not a keyword
+                if var_name in self.keywords:
+                    raise ValueError(f"Cannot assign to a keyword: {var_name}")
+                
+                self.consume_token()
+                val_expr = self.parse()
+                
+                current_token = self.get_next_token()
+                if current_token == ')':
+                    self.consume_token()
+                    return SetNode(name=var_name, val_expr=val_expr)
+                else:
+                    raise ValueError(f"Expected ')' after set expression, found {current_token}")
+
+            elif current_token == 'while':
+                self.consume_token()
+                cond_expr = self.parse()
+                body_expr = self.parse()
+                
+                current_token = self.get_next_token()
+                if current_token == ')':
+                    self.consume_token()
+                    return WhileNode(cond_expr=cond_expr, body_expr=body_expr)
+                else:
+                    raise ValueError(f"Expected ')' after while expression, found {current_token}")
             else:
                 raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+            
 
 class CodeGenerator:
     TRUE_VAL  = 0xfffffffffffffffe
@@ -274,11 +314,11 @@ class CodeGenerator:
 
 
     @visit.register(IdentifierNode)
-    def _visit_let(self, node):
+    def _visit_id(self, node):
         self.add_instruction(f"mov rax,[rbp -{8*self.variable_map[node.name]}]")
 
     @visit.register(IfNode)
-    def _visit_let(self, node):
+    def _visit_if(self, node):
         self.visit(node.cond_expr)
         self.add_instruction(f"cmp rax,0")
         self.add_instruction(f"je else_of_if_{self._label_num+1}")
@@ -289,7 +329,7 @@ class CodeGenerator:
         self.add_label(f"end_of_if")
 
     @visit.register(BoolNode)
-    def _visit_let(self, node):
+    def _visit_bool(self, node):
         if node.flag: 
             self.add_instruction(f"mov rax,{self.TRUE_VAL}")
         else:
@@ -309,23 +349,164 @@ class CodeGenerator:
             self.add_instruction(f"sub rax,[rbp - {self.top_variable()}]")
         self.pop_variable()
         self.add_instruction(f"shr rax,63")
+    
+    @visit.register(SetNode)
+    def _visit_set(self, node):
+        self.visit(node.val_expr)
+        stack_offset = 8 * self.variable_map[node.name]
+        self.add_instruction(f"mov [rbp - {stack_offset}], rax")
+
+    @visit.register(WhileNode)
+    def _visit_while(self, node):
+        self._label_num += 1
+        loop_start = f"while_start_{self._label_num}"
+        loop_end = f"while_end_{self._label_num}"
+        self.generated_code.append(f"{loop_start}:")
+        self.visit(node.cond_expr)
+        self.add_instruction(f"cmp rax, 0") 
+        self.add_instruction(f"je {loop_end}") # If condition evaluation fails, escape loop block
+        self.visit(node.body_expr)
+        self.add_instruction(f"jmp {loop_start}")
+        self.generated_code.append(f"{loop_end}:")
+        self.add_instruction(f"mov rax,{self.FALSE_VAL}")
+
+class TypeKind(Enum):
+    INT=auto()
+    BOOL=auto()
+
+class TypeChecker:
+    def __init__(self, root_node: "ASTNode"):
+        # Correct PEP 8 attribute naming
+        self.ast_node = root_node
+        self.variable_map = {}
+
+    def add_to_map(self, var_name, type_kind):
+        self.variable_map[var_name]=type_kind
+    
+    def typecheck(self):
+        self.visit(self.ast_node)
+        
+    @singledispatchmethod
+    def visit(self, node):
+        """This is the generic fallback method."""
+        raise TypeError(f"No visitor registered for {type(node)} or a invalid node")
+
+    @visit.register(ASTNode)
+    def _visit_ast(self, node):
+        # Python 3 equivalent of map(self.visit, node.children)
+        for child in node.children:
+            self.visit(child)
+
+    @visit.register(BoolNode)
+    def _visit_bool(self, node):
+        return TypeKind.BOOL
+
+    @visit.register(IntegerNode)
+    def _visit_constant(self, node):
+        return TypeKind.INT
+
+    @visit.register(AddNode)
+    def _visit_binary(self, node):
+        left_expr=self.visit(node.left_expr)
+        right_expr=self.visit(node.right_expr)
+        if left_expr == TypeKind.INT and right_expr == TypeKind.INT:
+            return TypeKind.INT
+        else:
+            raise TypeError(f"cannot add {left_expr} and {right_expr}")
+
+    @visit.register(BinOpNode)
+    def _visit_bin_op(self, node):
+        left_expr = self.visit(node.left_expr)
+        right_expr = self.visit(node.right_expr)
+        if left_expr == TypeKind.INT and right_expr == TypeKind.INT:
+            return TypeKind.BOOL
+        else:
+            raise TypeError(f"cannot {node.operator} on {left_expr} and {right_exp}")
+    
+    @visit.register(IfNode)
+    def _visit_if(self,node):
+        cond_expr = self.visit(node.cond_expr)
+        if cond_expr == TypeKind.BOOL:
+            then_expr = self.visit(node.then_expr)
+            else_expr = self.visit(node.else_expr)
+            if then_expr == else_expr :
+                return then_expr
+            else:
+                raise TypeError(f"branches have different type")
+        else:
+            raise TypeError(f"condition expression in not bool type")
+
+    @visit.register(LetNode)
+    def _visit_let(self, node):
+        name_expr = self.visit(node.name_expr)
+        self.variable_map[node.name]=name_expr
+        logging.debug(f" name_expr type is {name_expr} and name_expr is {node.name_expr}")
+        let_expr = self.visit(node.let_expr)
+        return let_expr
+
+    @visit.register(IdentifierNode)
+    def _visit_id(self, node):
+        logging.debug(f" node.name is {node.name} and node.name type is {self.variable_map[node.name]}")
+        return self.variable_map[node.name]
+    
+    @visit.register(SetNode)
+    def _visit_set(self, node):
+        if node.name not in self.variable_map:
+            raise TypeError(f"Undefined variable mutation: {node.name}")
+        
+        val_type = self.visit(node.val_expr)
+        expected_type = self.variable_map[node.name]
+        
+        if val_type != expected_type:
+            raise TypeError(f"Cannot assign type {val_type} to variable '{node.name}' of type {expected_type}")
+            
+        return val_type
+
+    @visit.register(WhileNode)
+    def _visit_while(self, node):
+        cond_type = self.visit(node.cond_expr)
+        if cond_type != TypeKind.BOOL:
+            raise TypeError(f"Loop condition must be a BOOL, got {cond_type}")
+        self.visit(node.body_expr)
+        return TypeKind.BOOL
 
 if __name__ == '__main__':
-    arg_parser = argparse.ArgumentParser(description="This is itercompiler which compiles s-expression")
-    arg_parser.add_argument("file_path",help="file to compile")
-    arg_parser.add_argument("--verbose",help="verbose level for logging")
-    arg_parser.parse_args()
-    args=arg_parser.parse_args()
-    with open(file=args.file_path,mode="r") as file:
-        source_code=file.read()
-    logging.basicConfig(filename='compiler.log', level=logging.INFO)
-    if not source_code:
-        FileNotFoundError(f"File is empty or not found at {args.file_path}")
+    arg_parser = argparse.ArgumentParser(description="This is snek compiler which compiles s-expression")
+    arg_parser.add_argument("file_path", help="file to compile")
+    
+    arg_parser.add_argument(
+        "--verbose", 
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="WARNING",  # Default if user doesn't pass --verbose
+        type=lambda s: s.upper(), 
+        help="verbose level for logging"
+    )
+    
+    args = arg_parser.parse_args()
+    
+    log_level = getattr(logging, args.verbose, logging.WARNING)
+    
+    logging.basicConfig(
+        filename='compiler.log', 
+        level=log_level,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
+    with open(file=args.file_path, mode="r") as file:
+        source_code = file.read()
+        
+    if not source_code.strip():
+        raise ValueError(f"File is empty at {args.file_path}")
+        
     tokens = Tokenize(source_code)
     logging.debug(f'tokens are {tokens}')
+    
     parser = Parser(tokens)
     ast_root_node = parser.parse()
+    
+    type_checker = TypeChecker(ast_root_node)
+    type_checker.typecheck()
+    
     code_gen = CodeGenerator(ast_root_node)
     code_gen.generate()
-    
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+

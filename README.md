@@ -12,9 +12,9 @@ A compiler for a Lisp/Scheme-like language (S-expressions) that generates x86-64
 - [x] Stack-based code generation to x86-64
 - [x] Basic runtime setup
 - [x] Let bindings (variables)
+- [x] Conditionals (`if`)
 
 ### Planned / In Progress
-- [ ] Conditionals (`if`)
 - [ ] Functions and calling convention
 - [ ] Tuples / Data structures
 - [ ] Garbage Collection
@@ -30,11 +30,11 @@ A compiler for a Lisp/Scheme-like language (S-expressions) that generates x86-64
 
 ```bash
 # Clone the repo
-git clone https://github.com/nikhildandotkar/snek-compiler.git
+git clone https://github.com/nikhildandodkar/snek-compiler.git
 cd snek-compiler
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Build and run a program
-make run FILE=examples/basic.snek
+make run FILE=examples/simple.snek
