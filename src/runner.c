@@ -6,7 +6,7 @@ int main(int argc, char** argv) {
   int64_t result = code_starts_here();
   
   if(result&1){
-	  printf("%ld\n", result/2);
+	  printf("%ld\n", (result-1)/2);
   }else if (result==0xFFFFFFFFFFFFFFFEULL){
   	  printf("true\n");
 	  

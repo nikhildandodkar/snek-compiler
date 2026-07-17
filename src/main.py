@@ -101,11 +101,14 @@ class Parser:
 
     def is_binary_operator(self,token):
         return token in self.binary_operator
+    
+    def is_integer(self,s:str) -> bool:
+    	return s[1:].isdigit() if s.startswith("-") else s.isdigit()
 
     def parse(self):
         current_token = self.get_next_token()
         logging.debug(f"[parse] current_token is {current_token}")
-        if current_token.isdecimal():
+        if self.is_integer(current_token):
             self.consume_token()
             return IntegerNode(val=int(current_token))
         elif current_token == 'true':
@@ -484,7 +487,7 @@ if __name__ == '__main__':
     
     args = arg_parser.parse_args()
     
-    log_level = getattr(logging, args.verbose, logging.WARNING)
+    log_level = getattr(logging, args.verbose, logging.DEBUG)
     
     logging.basicConfig(
         filename='compiler.log', 
