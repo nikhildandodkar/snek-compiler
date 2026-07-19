@@ -38,3 +38,16 @@ pip install -r requirements.txt
 
 # Build and run a program
 make run FILE=examples/simple.snek
+```
+## Unit Test
+
+```bash
+# Go to project directory
+cd snek-compiler
+
+# command to run all test
+python -m unittest discover -s tests
+
+# command to run test for single module
+python -m unittest tests/test_parser.py
+```
