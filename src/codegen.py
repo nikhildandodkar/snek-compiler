@@ -1,6 +1,6 @@
 from functools import singledispatchmethod
 import logging
-from ast_nodes import (
+from src.ast_nodes import (
     ASTNode, AddNode, IncNode, DecNode, IntegerNode, LetNode, IdentifierNode, IfNode, BoolNode, BinOpNode, SetNode, WhileNode
 )
 

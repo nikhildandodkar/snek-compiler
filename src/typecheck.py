@@ -1,7 +1,7 @@
 from functools import singledispatchmethod
 from enum import Enum, auto
 import logging
-from ast_nodes import (
+from src.ast_nodes import (
     ASTNode, BoolNode, IntegerNode, AddNode, BinOpNode, IfNode, LetNode, IdentifierNode, SetNode, WhileNode
 )
 

@@ -1,5 +1,5 @@
 import logging
-from ast_nodes import (
+from src.ast_nodes import (
     ASTNode, IntegerNode, BoolNode, IdentifierNode, IncNode, DecNode,
     AddNode, LetNode, IfNode, BinOpNode, SetNode, WhileNode
 )
