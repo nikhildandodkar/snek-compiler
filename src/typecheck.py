@@ -2,7 +2,7 @@ from functools import singledispatchmethod
 from enum import Enum, auto
 import logging
 from src.ast_nodes import (
-    ASTNode, BoolNode, IntegerNode, AddNode, BinOpNode, IfNode, LetNode, IdentifierNode, SetNode, WhileNode
+    ASTNode, BoolNode, IntegerNode, AddNode, BinOpNode, IfNode, LetNode, IdentifierNode, SetNode, WhileNode, TypeNode, CallNode, FuncDefNode, ProgramNode
 )
 
 class TypeKind(Enum):
@@ -14,6 +14,7 @@ class TypeChecker:
         # Correct PEP 8 attribute naming
         self.ast_node = root_node
         self.variable_map = {}
+        self.function_map = {}
 
     def add_to_map(self, var_name, type_kind):
         self.variable_map[var_name]=type_kind
@@ -81,8 +82,11 @@ class TypeChecker:
 
     @visit.register(IdentifierNode)
     def _visit_id(self, node):
-        logging.debug(f" node.name is {node.name} and node.name type is {self.variable_map[node.name]}")
-        return self.variable_map[node.name]
+        if node.name in self.variable_map:
+            logging.debug(f" node.name is {node.name} and node.name type is {self.variable_map[node.name]}")
+            return self.variable_map[node.name]
+        else:
+            raise TypeError(f"variable {node.name} not defined")
     
     @visit.register(SetNode)
     def _visit_set(self, node):
@@ -105,3 +109,59 @@ class TypeChecker:
         self.visit(node.body_expr)
         return TypeKind.BOOL
 
+    @visit.register(TypeNode)
+    def _visit_typenode(self, node):
+        if node.type_name == 'int':
+            return TypeKind.INT
+        elif node.type_name == 'bool':
+            return TypeKind.BOOL
+        else:
+           raise TypeError(f"Unsuported type {node.type_name} found") 
+
+
+    @visit.register(ProgramNode)
+    def _visit_program(self, node):
+        for func in node.function_defs:
+            para_type = self.visit(func.parameter_type)
+            return_type = self.visit(func.return_type)
+            self.function_map[func.function_name]=(para_type,return_type)
+
+        for func in node.function_defs:
+            self.visit(func)
+        
+        self.visit(node.expr)
+
+    @visit.register(FuncDefNode)
+    def _visit_funcdef(self, node):
+        expected_return_type = self.visit(node.return_type)
+        param_type = self.visit(node.parameter_type)
+
+        old_var_map = self.variable_map.copy()
+        try:
+            self.variable_map[node.parameter_name] = param_type
+            actual_return_type = self.visit(node.body_expr)
+            
+            if actual_return_type != expected_return_type:
+                raise TypeError(
+                    f"Function '{node.function_name}' body returns {actual_return_type}, "
+                    f"but expected {expected_return_type}"
+                )
+            return expected_return_type
+        finally:
+            self.variable_map = old_var_map
+
+    @visit.register(CallNode)
+    def _visit_call(self, node):
+        if node.function_name not in self.function_map:
+            raise TypeError(f"Call to undefined function '{node.function_name}'")
+
+        param_type, return_type = self.function_map[node.function_name]
+        arg_type = self.visit(node.para_expr)
+
+        if arg_type != param_type:
+            raise TypeError(
+                f"Function '{node.function_name}' expects argument of type {param_type}, "
+                f"got {arg_type}"
+            )
+
+        return return_type

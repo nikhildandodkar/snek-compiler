@@ -1,7 +1,7 @@
 import logging
 from src.ast_nodes import (
     ASTNode, IntegerNode, BoolNode, IdentifierNode, IncNode, DecNode,
-    AddNode, LetNode, IfNode, BinOpNode, SetNode, WhileNode
+    AddNode, LetNode, IfNode, BinOpNode, SetNode, WhileNode, FuncDefNode, TypeNode, CallNode, ProgramNode
 )
 
 def Tokenize(sexp):
@@ -32,9 +32,12 @@ class Parser:
     def is_integer(self,s:str) -> bool:
     	return s[1:].isdigit() if s.startswith("-") else s.isdigit()
 
-    def parse(self):
+    def is_end_tokens(self):
+        return self._pos > len(self._token_list)
+
+    def parse_expression(self):
         current_token = self.get_next_token()
-        logging.debug(f"[parse] current_token is {current_token}")
+        logging.debug(f"[parse_expression] current_token is {current_token}")
         if self.is_integer(current_token):
             self.consume_token()
             return IntegerNode(val=int(current_token))
@@ -53,7 +56,7 @@ class Parser:
             if current_token == 'inc' or current_token == 'dec':
                 op_token = current_token
                 self.consume_token()
-                arg_expr=self.parse()
+                arg_expr=self.parse_expression()
                 current_token=self.get_next_token()
                 if current_token == ')':
                     self.consume_token()
@@ -65,8 +68,8 @@ class Parser:
                     raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
             elif current_token == '+':
                 self.consume_token()
-                left_expr=self.parse()
-                right_expr=self.parse()
+                left_expr=self.parse_expression()
+                right_expr=self.parse_expression()
                 current_token = self.get_next_token()
                 if current_token == ')':
                     self.consume_token()
@@ -82,12 +85,12 @@ class Parser:
                     if current_token not in self.keywords:
                         var_name=current_token
                         self.consume_token()
-                        var_expr=self.parse()
+                        var_expr=self.parse_expression()
                         current_token =self.get_next_token()
                         self.identifier.append(var_name)
                         if current_token == ')':
                             self.consume_token()
-                            let_expr= self.parse()
+                            let_expr= self.parse_expression()
                             current_token = self.get_next_token()
                             if current_token == ')':
                                 self.consume_token()
@@ -103,15 +106,15 @@ class Parser:
 
             elif current_token == 'if':
                 self.consume_token()
-                cond_expr = self.parse()
-                then_expr = self.parse()
-                else_expr = self.parse()
+                cond_expr = self.parse_expression()
+                then_expr = self.parse_expression()
+                else_expr = self.parse_expression()
                 return IfNode(cond_expr=cond_expr,then_expr=then_expr,else_expr=else_expr)
             elif self.is_binary_operator(current_token):
                 self.consume_token()
                 operator=current_token
-                left_expr=self.parse()
-                right_expr=self.parse()
+                left_expr=self.parse_expression()
+                right_expr=self.parse_expression()
                 current_token = self.get_next_token()
                 if current_token == ')':
                     self.consume_token()
@@ -126,7 +129,7 @@ class Parser:
                     raise ValueError(f"Cannot assign to a keyword: {var_name}")
                 
                 self.consume_token()
-                val_expr = self.parse()
+                val_expr = self.parse_expression()
                 
                 current_token = self.get_next_token()
                 if current_token == ')':
@@ -137,8 +140,8 @@ class Parser:
 
             elif current_token == 'while':
                 self.consume_token()
-                cond_expr = self.parse()
-                body_expr = self.parse()
+                cond_expr = self.parse_expression()
+                body_expr = self.parse_expression()
                 
                 current_token = self.get_next_token()
                 if current_token == ')':
@@ -146,6 +149,61 @@ class Parser:
                     return WhileNode(cond_expr=cond_expr, body_expr=body_expr)
                 else:
                     raise ValueError(f"Expected ')' after while expression, found {current_token}")
+            elif current_token == 'def':
+                self.consume_token()
+                function_name = self.get_next_token()
+                self.consume_token()
+                current_token = self.get_next_token()
+                if current_token == '(':
+                    self.consume_token()
+                    para_name = self.get_next_token()
+                    self.identifier.append(para_name)
+                    self.consume_token()
+                    current_token = self.get_next_token()
+                    if current_token == ':':
+                        self.consume_token()
+                        current_token = self.get_next_token()
+                        para_type=TypeNode(type_name=current_token)
+                        self.consume_token()
+                        current_token = self.get_next_token()
+                        if current_token == ')':
+                            self.consume_token()
+                            current_token = self.get_next_token()
+                            if current_token == ':':
+                                self.consume_token()
+                                current_token = self.get_next_token()
+                                return_type=TypeNode(type_name=current_token)
+                                self.consume_token()
+                                body_expr = self.parse_expression()
+                                current_token = self.get_next_token()
+                                if current_token == ')':
+                                    self.consume_token()
+                                    return FuncDefNode(function_name = function_name, parameter_name = para_name,parameter_type = para_type,return_type = return_type ,body_expr = body_expr )
+                                else:
+                                    raise ValueError(f"Expected ')' after while expression, found {current_token}")
+                            else:
+                                raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+                        else:
+                            raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+                    else:
+                        raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+                else:
+                     raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+
             else:
-                raise ValueError(f"Incorrect expression.unexpected charater found {current_token}")
+              function_name=current_token
+              self.consume_token()
+              para_expr=self.parse_expression()
+              return CallNode(function_name = function_name, para_expr = para_expr)
+
+
  
+    def parse(self):
+        function_list=[]
+        while not self.is_end_tokens():
+            expr = self.parse_expression()
+            if isinstance(expr,FuncDefNode):
+                function_list.append(expr)
+            else:
+                return ProgramNode(function_defs=function_list,expr=expr)
+        raise ValueError(f"no body expression to execute")
