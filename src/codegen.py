@@ -154,3 +154,9 @@ class CodeGenerator:
         self.generated_code.append(f"{loop_end}:")
         self.add_instruction(f"mov rax,{self.FALSE_VAL}")
 
+    @visit.register(ProgramNode)
+    def _visit_program(self, node):
+        for func in node.function_defs:
+            pass
+
+        self.visit(node.expr)
