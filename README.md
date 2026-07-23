@@ -13,11 +13,13 @@ A compiler for a Lisp/Scheme-like language (S-expressions) that generates x86-64
 - [x] Basic runtime setup
 - [x] Let bindings (variables)
 - [x] Conditionals (`if`)
+- [x] Functions and calling convention
 
 ### Planned / In Progress
-- [ ] Functions and calling convention
 - [ ] Tuples / Data structures
-- [ ] Garbage Collection
+- [ ] LLVM IR with llvmlite
+- [ ] Instruction selection 
+- [ ] Instruction scheduling 
 - [ ] Register allocation
 - [ ] Optimizations
 
