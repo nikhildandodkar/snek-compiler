@@ -37,17 +37,9 @@ class CodeGenerator:
         self.visit(self.ast_node)
         print(self.generated_code)
         with open(file="generated_code.asm",mode="w") as asm_file:
-            asm_file.write(f"section .text\n")
-            asm_file.write(f"global code_starts_here:\n")
-            asm_file.write(f"code_starts_here:\n")
-            asm_file.write(f"\t push rbp \n")
-            asm_file.write(f"\t mov rbp, rsp\n")
             for instructions in self.generated_code:
                 asm_file.write(instructions +"\n")
             logging.info(f"assembly file is generated")
-            asm_file.write(f"\t mov rsp, rbp\n")
-            asm_file.write(f"\t pop rbp\n")
-            asm_file.write(f"\t ret\n")
     
     @singledispatchmethod
     def visit(self, node):
@@ -64,6 +56,8 @@ class CodeGenerator:
     def _visit_binary(self, node):
         self.visit(node.left_expr)
         self.add_instruction(f"mov [rbp - {self.push_variable()}], rax")
+        
+        # self.add_instruction(f"push rax")
         logging.debug(f"push rax")
         self.visit(node.right_expr)
         self.add_instruction(f"and rax,{self.TRUE_VAL}")
@@ -154,9 +148,46 @@ class CodeGenerator:
         self.generated_code.append(f"{loop_end}:")
         self.add_instruction(f"mov rax,{self.FALSE_VAL}")
 
+    @visit.register(FuncDefNode)
+    def _visit_funcdef(self, node):
+        old_var_map = self.variable_map.copy()
+        old_stack_count = self._stack_count
+        self.generated_code.append(f"{node.function_name}_snek:\n")
+        self.generated_code.append(f"\tpush rbp \n")
+        self.generated_code.append(f"\tmov rbp, rsp\n")
+        self._stack_count=0
+        self.variable_map[node.parameter_name]=self._stack_count+1
+        self.generated_code.append(f"\tpush rdi\n")
+        self.visit(node.body_expr)
+        self.generated_code.append(f"\tmov rsp, rbp\n")
+        self.generated_code.append(f"\tpop rbp\n")
+        self.generated_code.append(f"\tret\n")
+        self._stack_count = old_stack_count
+        self.variable_map = old_var_map
+
+    @visit.register(CallNode)
+    def _visit_call(self, node):
+        self.visit(node.para_expr)
+        self.add_instruction(f"mov rdi, rax\n")
+        # align stack 16 byte
+        pad_stack = self._stack_count%2 != 0
+        if pad_stack:
+            self.add_instruction(f"sub rsp, 8")
+        self.add_instruction(f"call {node.function_name}_snek \n")
+        if pad_stack:
+            self.add_instruction(f"add rsp, 8")
+
     @visit.register(ProgramNode)
     def _visit_program(self, node):
+        self.generated_code.append(f"section .text\n")
+        self.generated_code.append(f"global code_starts_here:\n")
         for func in node.function_defs:
-            pass
+            self.visit(func)
 
+        self.generated_code.append(f"code_starts_here:\n")
+        self.generated_code.append(f"\t push rbp \n")
+        self.generated_code.append(f"\t mov rbp, rsp\n")
         self.visit(node.expr)
+        self.generated_code.append(f"\t mov rsp, rbp\n")
+        self.generated_code.append(f"\t pop rbp\n")
+        self.generated_code.append(f"\t ret\n")
